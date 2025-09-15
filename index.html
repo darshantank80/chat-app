@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Volatile Anonymous Chat</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    #roomBox {
+      margin: 10px 0;
+      padding: 5px 10px;
+      border: 1px solid #333;
+      display: inline-block;
+      font-weight: bold;
+      background: #f0f0f0;
+    }
+    #copyBtn {
+      margin-left: 5px;
+      cursor: pointer;
+    }
+    #messages {
+      border: 1px solid #ccc;
+      height: 200px;
+      overflow: auto;
+      padding: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Anonymous Chat</h2>
+
+  <button onclick="createRoom()">Create Room</button><br/><br/>
+  <input id="room" placeholder="Enter Room Code" />
+  <button onclick="joinRoom()">Join Room</button>
+
+  <div id="chat" style="display:none;">
+    <h3>
+      Room: 
+      <span id="roomBox"><span id="roomCode"></span></span>
+      <button id="copyBtn" onclick="copyCode()">📋 Copy</button>
+    </h3>
+    <div id="messages"></div>
+    <input id="msg" placeholder="Type message..." />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+
+  <script>
+    const socket = io();
+    let roomCode = "";
+
+    function createRoom() {
+      socket.emit("createRoom");
+    }
+
+    socket.on("roomCreated", (code) => {
+      roomCode = code;
+      document.getElementById("roomCode").innerText = code;
+      document.getElementById("chat").style.display = "block";
+    });
+
+    function joinRoom() {
+      roomCode = document.getElementById("room").value.trim();
+      if (!roomCode) return;
+      socket.emit("joinRoom", roomCode);
+    }
+
+    socket.on("joined", (code) => {
+      roomCode = code;
+      document.getElementById("roomCode").innerText = code;
+      document.getElementById("chat").style.display = "block";
+    });
+
+    function sendMessage() {
+      const msg = document.getElementById("msg").value;
+      if (!msg) return;
+
+      addMessage(`Me: ${msg}`);
+      socket.emit("chatMessage", { roomCode, msg });
+      document.getElementById("msg").value = "";
+    }
+
+    socket.on("message", (msg) => addMessage(msg));
+    socket.on("system", (msg) => addMessage(msg, true));
+
+    function addMessage(msg, isSystem = false) {
+      const messages = document.getElementById("messages");
+      const div = document.createElement("div");
+      div.innerHTML = isSystem ? `<i>${msg}</i>` : msg;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function copyCode() {
+      navigator.clipboard.writeText(roomCode).then(() => {
+        alert("Room code copied: " + roomCode);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,98 +1,120 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <title>Volatile Anonymous Chat</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Volatile Chat</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    #roomBox {
-      margin: 10px 0;
-      padding: 5px 10px;
-      border: 1px solid #333;
-      display: inline-block;
-      font-weight: bold;
-      background: #f0f0f0;
-    }
-    #copyBtn {
-      margin-left: 5px;
-      cursor: pointer;
-    }
-    #messages {
-      border: 1px solid #ccc;
-      height: 200px;
-      overflow: auto;
-      padding: 5px;
-    }
+    *{box-sizing:border-box;margin:0;padding:0;font-family:sans-serif}
+    body{background:#f6f7fb;color:#111}
+    .app{max-width:900px;margin:0 auto;height:100vh;display:grid;grid-template-rows:auto 1fr auto;gap:12px;padding:12px}
+    header{display:flex;align-items:center;gap:12px;background:#fff;padding:10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+    header h1{font-size:1.1rem}
+    .controls{display:flex;gap:6px;align-items:center}
+    input{padding:8px;border:1px solid #ccc;border-radius:8px}
+    button{padding:8px 12px;border:0;border-radius:8px;background:#2b6ef6;color:#fff;cursor:pointer}
+    .chat{display:flex;flex-direction:column;background:#fff;padding:12px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.05)}
+    .messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+    .msg-row{display:flex;gap:8px}
+    .msg-row.left{justify-content:flex-start}
+    .msg-row.right{justify-content:flex-end}
+    .bubble{max-width:70%;padding:8px 12px;border-radius:12px;font-size:.95rem}
+    .bubble.left{background:#f1f5ff;color:#111;border-bottom-left-radius:4px}
+    .bubble.right{background:#dcf8c6;color:#111;border-bottom-right-radius:4px}
+    .bubble small{display:block;font-size:.7rem;color:#555;margin-top:2px}
+    .system{text-align:center;color:#777;font-size:.8rem}
+    .avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.7rem;color:#fff;font-weight:bold}
+    .composer{display:flex;gap:6px}
+    .composer input{flex:1}
   </style>
 </head>
 <body>
-  <h2>Anonymous Chat</h2>
+<div class="app">
+  <header>
+    <h1>Volatile Chat</h1>
+    <div class="controls">
+      <button id="createBtn">Create</button>
+      <input id="roomInput" placeholder="Room code"/>
+      <button id="joinBtn">Join</button>
+    </div>
+    <div style="margin-left:auto;font-size:.9rem;color:#444">
+      Room: <span id="roomBox">-</span> | Users: <span id="userCount">0</span>
+    </div>
+  </header>
+  <main class="chat">
+    <div class="messages" id="messages"></div>
+    <div class="composer">
+      <input id="msgInput" placeholder="Type a message..."/>
+      <button id="sendBtn">Send</button>
+    </div>
+  </main>
+</div>
 
-  <button onclick="createRoom()">Create Room</button><br/><br/>
-  <input id="room" placeholder="Enter Room Code" />
-  <button onclick="joinRoom()">Join Room</button>
+<script>
+const socket = io();
+const messages=document.getElementById("messages");
+const msgInput=document.getElementById("msgInput");
+const roomBox=document.getElementById("roomBox");
+const userCount=document.getElementById("userCount");
 
-  <div id="chat" style="display:none;">
-    <h3>
-      Room: 
-      <span id="roomBox"><span id="roomCode"></span></span>
-      <button id="copyBtn" onclick="copyCode()">📋 Copy</button>
-    </h3>
-    <div id="messages"></div>
-    <input id="msg" placeholder="Type message..." />
-    <button onclick="sendMessage()">Send</button>
-  </div>
+function pushMessage({text,fromSelf=false,isSystem=false,avatarColor="#999",ts=null,fromId=null}){
+  if(isSystem){
+    const div=document.createElement("div");
+    div.className="system";div.textContent=text;
+    messages.appendChild(div);messages.scrollTop=messages.scrollHeight;return;
+  }
+  const row=document.createElement("div");
+  row.className="msg-row "+(fromSelf?"right":"left");
+  if(!fromSelf){
+    const av=document.createElement("div");
+    av.className="avatar";av.style.background=avatarColor;
+    av.textContent=(fromId||"?").slice(0,2).toUpperCase();
+    row.appendChild(av);
+  }
+  const bubble=document.createElement("div");
+  bubble.className="bubble "+(fromSelf?"right":"left");
+  bubble.textContent=text;
+  if(ts){const s=document.createElement("small");
+    s.textContent=new Date(ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+    bubble.appendChild(s);}
+  row.appendChild(bubble);
+  messages.appendChild(row);
+  messages.scrollTop=messages.scrollHeight;
+}
 
-  <script>
-    const socket = io();
-    let roomCode = "";
+document.getElementById("createBtn").onclick=()=>socket.emit("createRoom",res=>{
+  if(res.ok){roomBox.textContent=res.room;userCount.textContent=res.count;pushMessage({text:`Created room ${res.room}`,isSystem:true});}
+  else pushMessage({text:res.error,isSystem:true});
+});
 
-    function createRoom() {
-      socket.emit("createRoom");
-    }
+document.getElementById("joinBtn").onclick=()=>{
+  const code=document.getElementById("roomInput").value.trim();
+  if(!code)return;
+  socket.emit("joinRoom",code,res=>{
+    if(res.ok){roomBox.textContent=res.room;userCount.textContent=res.count;pushMessage({text:`Joined room ${res.room}`,isSystem:true});}
+    else pushMessage({text:res.error,isSystem:true});
+  });
+};
 
-    socket.on("roomCreated", (code) => {
-      roomCode = code;
-      document.getElementById("roomCode").innerText = code;
-      document.getElementById("chat").style.display = "block";
-    });
+document.getElementById("sendBtn").onclick=sendMsg;
+msgInput.addEventListener("keydown",e=>{if(e.key==="Enter")sendMsg();});
+function sendMsg(){
+  const txt=msgInput.value.trim();if(!txt)return;
+  const ts=Date.now();
+  pushMessage({text:txt,fromSelf:true,ts});
+  socket.emit("message",{text:txt},ack=>{
+    if(!ack.ok)pushMessage({text:ack.error||"Send failed",isSystem:true});
+  });
+  msgInput.value="";
+}
 
-    function joinRoom() {
-      roomCode = document.getElementById("room").value.trim();
-      if (!roomCode) return;
-      socket.emit("joinRoom", roomCode);
-    }
-
-    socket.on("joined", (code) => {
-      roomCode = code;
-      document.getElementById("roomCode").innerText = code;
-      document.getElementById("chat").style.display = "block";
-    });
-
-    function sendMessage() {
-      const msg = document.getElementById("msg").value;
-      if (!msg) return;
-
-      addMessage(`Me: ${msg}`);
-      socket.emit("chatMessage", { roomCode, msg });
-      document.getElementById("msg").value = "";
-    }
-
-    socket.on("message", (msg) => addMessage(msg));
-    socket.on("system", (msg) => addMessage(msg, true));
-
-    function addMessage(msg, isSystem = false) {
-      const messages = document.getElementById("messages");
-      const div = document.createElement("div");
-      div.innerHTML = isSystem ? `<i>${msg}</i>` : msg;
-      messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
-    }
-
-    function copyCode() {
-      navigator.clipboard.writeText(roomCode).then(() => {
-        alert("Room code copied: " + roomCode);
-      });
-    }
-  </script>
+socket.on("message",p=>{
+  pushMessage({text:p.text,avatarColor:p.avatarColor,ts:p.ts,fromId:p.from});
+});
+socket.on("systemMessage",txt=>pushMessage({text:txt,isSystem:true}));
+socket.on("roomUsers",p=>{userCount.textContent=p.count;});
+socket.on("disconnect",()=>pushMessage({text:"Disconnected",isSystem:true}));
+</script>
 </body>
 </html>
